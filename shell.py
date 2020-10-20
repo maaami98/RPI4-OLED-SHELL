@@ -1,5 +1,5 @@
 #!/bin/python
-import time
+
 
 import Adafruit_GPIO.SPI as SPI
 import Adafruit_SSD1306
@@ -8,7 +8,12 @@ from PIL import Image
 from PIL import ImageDraw
 from PIL import ImageFont
 
-import subprocess
+#Daha sonrasında systemctl ekleniceği için stdin üzerinden veri okumak yerine keyboard hit üzerinden almayı seçtim
+from pynput.keyboard import Listener, Key
+
+from subprocess import Popen, PIPE
+import socket,threading,time
+
 
 # Raspberry Pi pin configuration:
 RST = None     # on the PiOLED this pin isnt used
@@ -30,11 +35,6 @@ width = disp.width
 height = disp.height
 image = Image.new('1', (width, height))
 
-# Get drawing object to draw on image.
-draw = ImageDraw.Draw(image)
-
-# Draw a black filled box to clear the image.
-draw.rectangle((0,0,width,height), outline=0, fill=0)
 
 # Draw some shapes.
 # First define some constants to allow easy resizing of shapes.
@@ -49,24 +49,49 @@ font_name='./fonts/kkberkbm.ttf'
 font = ImageFont.truetype(font=font_name, size=font_size, index=0, encoding='utf-8')
  
 
-from pynput.keyboard import Listener, Key
+shellOut=[]
 
-screen_Text=[]
-screen_Text.append('# ')
+cursor_x=0
+cursor_y=0
+#shellden gelen veriyi oled ekrana basmak için
+def shell2oled( p):
+    global s
+    while True:
+        try:
+            temp=p.stdout.read(1)
+            print (temp) #print debug
+            """
+            #print oled
+            
+            draw.text((x, top), temp,  font=font, fill=255)
+            disp.image(image)
+            disp.display()
+            time.sleep(.1)
+            """
+        except :
+            return
+
+# bash yerine sh' tercih ettim daha az print çıktısı sebebiyle
+
+#bu satırda subprocess oluşturup onu thread üzerinde tutmakta
+p=Popen(['sh'],shell=True, stdout=PIPE, stdin=PIPE,stderr=PIPE)
+shell2oled_thread = threading.Thread(target=shell2oled, args=[p])
+shell2oled_thread.start()
+# shellden verileri okumak için ve yazmak için olarak 2 ayrı thread oluşturdum
+#threadlere processi gönderiyorum
 def keyPressed(key):
     
-    
     try:
-        if key==Key.space:
-            screen_Text.append(' ')
-        screen_Text.append(key.char)
-        print (type(screen_Text))
-        draw.text((x, top), ''.join(screen_Text),  font=font, fill=255)
-        draw.text((x, top+10), "Linux raspi 5.4.51-v7l+ #1333 SMP Mon Aug 10 16:51:40 BST 2020 armv7l GNU/Linux",  font=font, fill=255)
         
-        disp.image(image)
-        disp.display()
-        time.sleep(.1)
+        if key==Key.enter:
+            data="\n\r" # bitiş karakteri gönder
+        else :
+            data=str(key.char)
+        
+        p.stdin.write(data.encode())
+        p.stdin.flush()
+
+        print(data,end="") #debug için
     except AttributeError:
         print('special key {0} pressed'.format(
             key))
